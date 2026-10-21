@@ -20,12 +20,16 @@ class LoanController extends Controller
 
     public function show(Request $request, string $id): JsonResponse
     {
-        return $this->ok(new LoanResource($this->findLoan($request, $id)));
+        return $this->ok(new LoanResource($this->findLoan($request, $id)))
+            ->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0, private')
+            ->header('Pragma', 'no-cache');
     }
 
     public function analysis(Request $request, string $id, DebtSolutionsService $solutions): JsonResponse
     {
-        return $this->ok($solutions->loanAnalysis($this->findLoan($request, $id)));
+        return $this->ok($solutions->loanAnalysis($this->findLoan($request, $id)))
+            ->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0, private')
+            ->header('Pragma', 'no-cache');
     }
 
     public function store(StoreLoanRequest $request): JsonResponse

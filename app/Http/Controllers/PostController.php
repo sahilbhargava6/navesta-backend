@@ -14,13 +14,15 @@ class PostController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
-        return $this->paginated($request, Post::published()->with('author')->latest('published_at'), PostResource::class);
+        return $this->paginated($request, Post::published()->with('author')->latest('published_at'), PostResource::class)
+            ->header('Cache-Control', 'public, max-age=1800, s-maxage=3600, stale-while-revalidate=86400');
     }
 
     public function show(string $slug): JsonResponse
     {
         $post = Post::published()->with('author')->where('slug', $slug)->first() ?? abort(404, 'Post not found');
 
-        return $this->ok((new PostResource($post))->withBody());
+        return $this->ok((new PostResource($post))->withBody())
+            ->header('Cache-Control', 'public, max-age=1800, s-maxage=3600, stale-while-revalidate=86400');
     }
 }

@@ -31,6 +31,28 @@ class StatementController extends Controller
         return $this->ok(new StatementResource($statement->refresh()), 'Statement uploaded', 201);
     }
 
+    /**
+     * Direct upload initiation: provides presigned parameters
+     * for direct S3/object-storage uploads.
+     */
+    public function presignedUrl(Request $request): JsonResponse
+    {
+        $request->validate([
+            'filename' => ['required', 'string', 'max:255'],
+            'mimeType' => ['required', 'string', 'in:application/pdf,text/csv,text/plain,application/octet-stream'],
+            'sizeBytes' => ['required', 'integer', 'min:1', 'max:'.(config('navesta.statements.max_upload_kb') * 1024)],
+        ]);
+
+        $data = $this->vault->createPresignedUpload(
+            $request->user(),
+            $request->input('filename'),
+            $request->input('mimeType'),
+            (int) $request->input('sizeBytes'),
+        );
+
+        return $this->ok($data, 'Upload parameters generated');
+    }
+
     public function show(Request $request, string $id): JsonResponse
     {
         return $this->ok(new StatementResource($this->findStatement($request, $id)));

@@ -4,6 +4,7 @@ use App\Http\Controllers\AuthController;
 use App\Http\Controllers\BalanceTransferController;
 use App\Http\Controllers\CreditCardController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\InquiryController;
 use App\Http\Controllers\LenderController;
 use App\Http\Controllers\LoanController;
 use App\Http\Controllers\NotificationController;
@@ -31,6 +32,8 @@ Route::prefix('posts')->controller(PostController::class)->group(function () {
     Route::get('/', 'index');
     Route::get('{slug}', 'show')->where('slug', '[a-z0-9-]+');
 });
+
+Route::post('inquiries', [InquiryController::class, 'store'])->middleware('throttle:10,1');
 
 // `idempotent`: POSTs honour an Idempotency-Key header (safe retries)
 Route::middleware(['auth:sanctum', 'idempotent'])->group(function () {
@@ -70,6 +73,7 @@ Route::middleware(['auth:sanctum', 'idempotent'])->group(function () {
     Route::prefix('dashboard')->controller(DashboardController::class)->group(function () {
         Route::get('summary', 'summary');
         Route::get('history', 'history');
+        Route::get('full', 'full');
     });
 
     Route::prefix('solutions')->controller(SolutionsController::class)->group(function () {
@@ -85,6 +89,7 @@ Route::middleware(['auth:sanctum', 'idempotent'])->group(function () {
     Route::prefix('statements')->controller(StatementController::class)->group(function () {
         Route::get('/', 'index');
         Route::post('/', 'store')->middleware('throttle:uploads');
+        Route::post('presigned-url', 'presignedUrl')->middleware('throttle:uploads');
         Route::get('{id}', 'show');
         Route::get('{id}/download', 'download');
         Route::delete('{id}', 'destroy');

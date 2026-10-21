@@ -19,13 +19,15 @@ class LenderController extends Controller
             ->when($type, fn ($lenders) => $lenders->filter(fn (Lender $l) => $l->type->value === $type))
             ->values();
 
-        return $this->ok(LenderResource::collection($lenders));
+        return $this->ok(LenderResource::collection($lenders))
+            ->header('Cache-Control', 'public, max-age=3600, s-maxage=86400, stale-while-revalidate=86400');
     }
 
     public function show(string $id): JsonResponse
     {
         $lender = Lender::find($id) ?? abort(404, 'Lender not found');
 
-        return $this->ok(new LenderResource($lender));
+        return $this->ok(new LenderResource($lender))
+            ->header('Cache-Control', 'public, max-age=3600, s-maxage=86400, stale-while-revalidate=86400');
     }
 }

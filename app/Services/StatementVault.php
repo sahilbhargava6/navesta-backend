@@ -40,6 +40,36 @@ class StatementVault
         return $statement;
     }
 
+    /**
+     * High-scale direct-to-storage upload: generates presigned upload parameters
+     * so customer statements can be uploaded directly to cloud object storage (S3/R2),
+     * completely bypassing API server bandwidth and thread allocation.
+     */
+    public function createPresignedUpload(User $user, string $filename, string $mimeType, int $sizeBytes): array
+    {
+        $disk = config('navesta.statements.disk');
+        $storage = Storage::disk($disk);
+        $path = "{$user->id}/".Str::uuid().'.enc';
+
+        if (method_exists($storage, 'temporaryUploadUrl')) {
+            $uploadUrl = $storage->temporaryUploadUrl($path, now()->addMinutes(15));
+
+            return [
+                'direct_upload' => true,
+                'upload_url' => $uploadUrl,
+                'path' => $path,
+                'disk' => $disk,
+            ];
+        }
+
+        return [
+            'direct_upload' => false,
+            'fallback_url' => url('/api/v1/statements'),
+            'path' => $path,
+            'disk' => $disk,
+        ];
+    }
+
     public function contents(Statement $statement): string
     {
         return Crypt::decryptString(Storage::disk($statement->disk)->get($statement->path));
