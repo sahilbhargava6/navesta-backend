@@ -2,11 +2,13 @@
 
 namespace App\Http\Controllers;
 
+use App\Contracts\MessageGateway;
 use App\Http\Requests\LoginRequest;
 use App\Http\Requests\RegisterRequest;
 use App\Models\User;
 use App\Services\AuditLogger;
 use App\Services\ConsentService;
+use App\Services\FootprintService;
 use App\Services\OtpService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -28,6 +30,7 @@ class AuthController extends Controller
     public function __construct(
         private AuditLogger $audit,
         private OtpService $otp,
+        private FootprintService $footprint,
     ) {}
 
     public function register(RegisterRequest $request, ConsentService $consents): JsonResponse
@@ -58,6 +61,8 @@ class AuthController extends Controller
 
             return $user;
         });
+
+        $this->footprint->capture($request, 'registration', $user);
 
         return $this->ok([
             'token' => $this->startSession($request, $user),
@@ -105,6 +110,7 @@ class AuthController extends Controller
             ], 'Enter the code sent to your phone');
         }
 
+        $this->footprint->capture($request, 'login', $user);
         $this->audit->record('auth.login.succeeded', $user, actor: $user);
 
         return $this->ok([
@@ -134,12 +140,87 @@ class AuthController extends Controller
         }
 
         Cache::forget($key);
+        $this->footprint->capture($request, 'login_2fa_otp', $user);
         $this->audit->record('auth.login.succeeded', $user, ['second_factor' => 'sms'], actor: $user);
 
         return $this->ok([
             'token' => $this->startSession($request, $user),
             'user' => $this->profile($user),
         ], 'Logged in successfully');
+    }
+
+    public function sendPhoneLoginOtp(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'phone' => ['required', 'string', 'regex:/^(\+91)?[6-9]\d{9}$/'],
+        ]);
+
+        $rawPhone = preg_replace('/\s+/', '', $data['phone']);
+        $phone = str_starts_with($rawPhone, '+91') ? $rawPhone : '+91'.$rawPhone;
+
+        $challengeId = Str::random(40);
+        $code = (string) random_int(100000, 999999);
+        $ttl = (int) config('navesta.otp.ttl_minutes', 5);
+        Cache::put("phone-login:{$challengeId}", ['phone' => $phone, 'code' => $code], now()->addMinutes($ttl));
+
+        app(MessageGateway::class)->send(
+            'sms',
+            $phone,
+            "Your Navesta sign-in verification code is {$code}. It expires in {$ttl} minutes.",
+        );
+
+        $this->audit->record('auth.phone.otp_sent', metadata: ['phone_masked' => OtpService::maskPhone($phone)]);
+
+        return $this->ok([
+            'challengeId' => $challengeId,
+            'phone' => OtpService::maskPhone($phone),
+            'expiresInSeconds' => $ttl * 60,
+        ], 'Verification code sent to your mobile phone');
+    }
+
+    public function verifyPhoneLoginOtp(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'challengeId' => ['required', 'string', 'size:40'],
+            'code' => ['required', 'string', 'digits:6'],
+            'name' => ['nullable', 'string', 'max:120'],
+        ]);
+
+        $key = "phone-login:{$data['challengeId']}";
+        $cached = Cache::get($key);
+
+        if (! $cached || $cached['code'] !== $data['code']) {
+            abort(401, 'Invalid or expired verification code');
+        }
+
+        $phone = $cached['phone'];
+        Cache::forget($key);
+
+        // Find existing user with matching decrypted phone
+        $user = User::all()->first(fn (User $u) => $u->phone === $phone);
+
+        if (! $user) {
+            $user = User::create([
+                'name' => $data['name'] ?? 'Fintech Borrower',
+                'email' => 'user_' . substr(md5($phone), 0, 8) . '@borrower.navesta.in',
+                'phone' => $phone,
+                'phone_verified_at' => now(),
+                'is_verified' => true,
+            ]);
+            $this->audit->record('auth.phone.auto_registered', $user, actor: $user);
+        } else {
+            if (! $user->phone_verified_at) {
+                $user->update(['phone_verified_at' => now(), 'is_verified' => true]);
+            }
+        }
+
+        $this->footprint->capture($request, 'phone_otp_login', $user);
+        $this->audit->record('auth.phone.login_succeeded', $user, actor: $user);
+
+        return $this->ok([
+            'token' => $this->startSession($request, $user),
+            'user' => $this->profile($user),
+        ], 'Signed in successfully via phone OTP');
     }
 
     public function logout(Request $request): JsonResponse

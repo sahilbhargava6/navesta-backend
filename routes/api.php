@@ -12,6 +12,7 @@ use App\Http\Controllers\PostController;
 use App\Http\Controllers\SolutionsController;
 use App\Http\Controllers\StatementController;
 use App\Http\Controllers\UserController;
+use App\Http\Controllers\UtilityController;
 use Illuminate\Support\Facades\Route;
 
 // All routes are served under /api/v1 (see bootstrap/app.php).
@@ -20,7 +21,13 @@ Route::prefix('auth')->controller(AuthController::class)->group(function () {
     Route::post('register', 'register')->middleware('throttle:register');
     Route::post('login', 'login')->middleware('throttle:login');
     Route::post('login/verify-otp', 'verifyLoginOtp')->middleware('throttle:otp-verify');
+    Route::post('phone/send-otp', 'sendPhoneLoginOtp')->middleware('throttle:otp-send');
+    Route::post('phone/verify-otp', 'verifyPhoneLoginOtp')->middleware('throttle:otp-verify');
     Route::post('logout', 'logout')->middleware('auth:sanctum');
+});
+
+Route::prefix('utilities')->controller(UtilityController::class)->group(function () {
+    Route::get('pincode/{pincode}', 'resolvePincode')->middleware('throttle:60,1');
 });
 
 Route::prefix('lenders')->controller(LenderController::class)->group(function () {

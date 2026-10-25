@@ -37,7 +37,7 @@ class AdminPanelProvider extends PanelProvider
                 AppAuthentication::make()
                     ->brandName('Navesta Admin')
                     ->recoverable(),
-                isRequired: true,
+                isRequired: ! app()->isLocal(),
             )
             ->colors([
                 'primary' => Color::Amber,

@@ -126,6 +126,10 @@ class AppServiceProvider extends ServiceProvider
             ->by($request->ip())
             ->response($tooMany('Too many sign-ups from this network. Please try again later.')));
 
+        RateLimiter::for('otp-send', fn (Request $request) => Limit::perMinute(5)
+            ->by($request->ip())
+            ->response($tooMany('Too many OTP requests. Please wait a minute.')));
+
         RateLimiter::for('otp-verify', fn (Request $request) => Limit::perMinute(10)
             ->by($request->user()?->id ?: $request->ip())
             ->response($tooMany('Too many attempts. Please wait a minute.')));

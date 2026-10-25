@@ -64,6 +64,34 @@ class AuditLogResource extends Resource
                 SelectFilter::make('actor_role')->options(['customer' => 'Customer', 'admin' => 'Admin', 'system' => 'System', 'guest' => 'Guest']),
                 SelectFilter::make('action')->options(fn () => AuditLog::query()->distinct()->orderBy('action')->pluck('action', 'action')->all()),
             ])
+            ->headerActions([
+                \Filament\Actions\Action::make('export_csv')
+                    ->label('Export Audit Log')
+                    ->icon(Heroicon::OutlinedArrowDownTray)
+                    ->action(function () {
+                        return response()->streamDownload(function () {
+                            $handle = fopen('php://output', 'w');
+                            fputcsv($handle, ['ID', 'Timestamp', 'Actor Role', 'Action', 'Subject Type', 'Subject ID', 'IP Address', 'User Agent']);
+                            AuditLog::query()->orderBy('created_at', 'desc')->chunk(500, function ($logs) use ($handle) {
+                                foreach ($logs as $log) {
+                                    fputcsv($handle, [
+                                        $log->id,
+                                        $log->created_at?->toIso8601String(),
+                                        $log->actor_role,
+                                        $log->action,
+                                        $log->subject_type ?? '',
+                                        $log->subject_id ?? '',
+                                        $log->ip_address ?? '',
+                                        $log->user_agent ?? '',
+                                    ]);
+                                }
+                            });
+                            fclose($handle);
+                        }, 'audit-logs-' . date('Y-m-d') . '.csv', [
+                            'Content-Type' => 'text/csv',
+                        ]);
+                    }),
+            ])
             ->recordActions([
                 ViewAction::make(),
             ]);

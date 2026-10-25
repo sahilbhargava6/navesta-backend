@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Prunable;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Storage;
 
@@ -19,7 +20,7 @@ use Illuminate\Support\Facades\Storage;
  */
 class Statement extends Model
 {
-    use HasUuids, Prunable;
+    use HasUuids, Prunable, SoftDeletes;
 
     protected $fillable = [
         'original_name',
