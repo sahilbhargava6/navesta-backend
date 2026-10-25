@@ -6,17 +6,17 @@
     "keywords": ["laravel", "framework"],
     "license": "MIT",
     "require": {
-        "php": "^8.2",
+        "php": "^8.3|^8.5",
         "dedoc/scramble": "^0.13.47",
         "filament/filament": "^4.13.2",
-        "laravel/framework": "^12.0",
+        "laravel/framework": "^13.0",
         "laravel/octane": "^2.21",
         "laravel/sanctum": "^4.0",
-        "laravel/tinker": "^2.10.1",
+        "laravel/tinker": "^2.10.1|^3.0",
         "league/flysystem-aws-s3-v3": "^3.35",
         "predis/predis": "^3.7",
         "sentry/sentry-laravel": "^4.29",
-        "spatie/laravel-backup": "^9.3"
+        "spatie/laravel-backup": "^9.3|^10.0"
     },
     "require-dev": {
         "fakerphp/faker": "^1.23",
@@ -64,7 +64,7 @@
     },
     "extra": {
         "branch-alias": {
-            "dev-master": "12.x-dev"
+            "dev-master": "13.x-dev"
         },
         "laravel": {
             "dont-discover": []
@@ -74,6 +74,9 @@
         "optimize-autoloader": true,
         "preferred-install": "dist",
         "sort-packages": true,
+        "platform": {
+            "php": "8.4.6"
+        },
         "allow-plugins": {
             "pestphp/pest-plugin": true,
             "php-http/discovery": true
