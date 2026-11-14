@@ -6,7 +6,6 @@ use App\Enums\BtStatus;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Database\Eloquent\SoftDeletes;
 
 /**
  * Cast attributes (column types come from the migrations).
@@ -15,7 +14,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  */
 class BtApplication extends Model
 {
-    use HasUuids, SoftDeletes;
+    use HasUuids;
 
     protected $fillable = [
         'lender_id',

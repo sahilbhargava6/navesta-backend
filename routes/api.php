@@ -47,7 +47,8 @@ Route::middleware(['auth:sanctum', 'idempotent'])->group(function () {
     Route::prefix('users')->controller(UserController::class)->group(function () {
         Route::get('me', 'show');
         Route::patch('me', 'update');
-        Route::delete('me', 'destroy');
+        Route::delete('me', 'destroy')->middleware('throttle:otp-verify');
+        Route::post('me/delete-code', 'sendDeletionCode')->middleware('throttle:otp-send');
         Route::get('me/export', 'export')->middleware('throttle:account-export');
         Route::post('me/phone/send-code', 'sendPhoneCode');
         Route::post('me/phone/verify', 'verifyPhone')->middleware('throttle:otp-verify');
@@ -99,6 +100,8 @@ Route::middleware(['auth:sanctum', 'idempotent'])->group(function () {
         Route::post('presigned-url', 'presignedUrl')->middleware('throttle:uploads');
         Route::get('{id}', 'show');
         Route::get('{id}/download', 'download');
+        Route::post('{id}/parse', 'parse')->middleware('throttle:10,1');
+        Route::get('{id}/parse', 'parseStatus')->middleware('throttle:60,1');
         Route::delete('{id}', 'destroy');
     });
 });

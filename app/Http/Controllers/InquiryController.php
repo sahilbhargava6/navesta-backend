@@ -12,16 +12,18 @@ class InquiryController extends Controller
     public function store(Request $request, AuditLogger $audit): JsonResponse
     {
         $validated = $request->validate([
-            'name' => ['required', 'string', 'max:120'],
-            'email' => ['required', 'email:rfc', 'max:120'],
-            'phone' => ['nullable', 'string', 'max:30'],
+            // Callback leads send only a phone number; everything else needs a
+            // way to reply, so at least one of email / phone is required.
+            'name' => ['nullable', 'string', 'max:120'],
+            'email' => ['nullable', 'required_without:phone', 'email:rfc', 'max:120'],
+            'phone' => ['nullable', 'required_without:email', 'string', 'max:30', 'regex:/^[0-9+\-\s()]{7,30}$/'],
             'inquiryType' => ['nullable', 'string', 'max:80'],
             'message' => ['required', 'string', 'min:5', 'max:5000'],
         ]);
 
         $inquiry = Inquiry::create([
-            'name' => $validated['name'],
-            'email' => $validated['email'],
+            'name' => $validated['name'] ?? null,
+            'email' => $validated['email'] ?? null,
             'phone' => $validated['phone'] ?? null,
             'inquiry_type' => $validated['inquiryType'] ?? 'General Inquiry',
             'message' => $validated['message'],

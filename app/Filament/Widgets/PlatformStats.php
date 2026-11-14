@@ -3,10 +3,13 @@
 namespace App\Filament\Widgets;
 
 use App\Enums\BtStatus;
+use App\Enums\InquiryStatus;
 use App\Enums\UserRole;
+use App\Filament\Resources\Inquiries\InquiryResource;
 use App\Filament\Support\Display;
 use App\Models\BtApplication;
 use App\Models\CreditCard;
+use App\Models\Inquiry;
 use App\Models\Loan;
 use App\Models\User;
 use Filament\Widgets\StatsOverviewWidget;
@@ -25,6 +28,7 @@ class PlatformStats extends StatsOverviewWidget
         $pending = BtApplication::where('status', BtStatus::Submitted);
         $approvedThisMonth = BtApplication::whereIn('status', [BtStatus::Approved, BtStatus::Disbursed])
             ->where('updated_at', '>=', $monthStart);
+        $newLeads = Inquiry::where('status', InquiryStatus::Pending);
 
         return [
             Stat::make('Customers', (clone $customers)->count())
@@ -37,6 +41,10 @@ class PlatformStats extends StatsOverviewWidget
             Stat::make('Approved this month', (clone $approvedThisMonth)->count())
                 ->description(Display::rupees((int) (clone $approvedThisMonth)->sum('outstanding_paise')).' transferred or approved')
                 ->color('success'),
+            Stat::make('New leads', (clone $newLeads)->count())
+                ->description((clone $newLeads)->where('inquiry_type', 'Personal Loan Callback')->count().' loan callback requests')
+                ->color('warning')
+                ->url(InquiryResource::getUrl('index')),
         ];
     }
 }

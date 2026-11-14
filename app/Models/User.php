@@ -14,7 +14,6 @@ use Filament\Panel;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
-use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Carbon;
@@ -30,12 +29,12 @@ use Laravel\Sanctum\HasApiTokens;
  * @property bool $reminders_enabled
  * @property bool $two_factor_enabled
  * @property string|null $phone decrypted transparently
+ * @property string|null $phone_hash keyed hash of the normalised phone (indexed lookup)
  * @property Carbon|null $phone_verified_at
- * @property Carbon|null $deleted_at
  */
 class User extends Authenticatable implements FilamentUser, HasAppAuthentication, HasAppAuthenticationRecovery
 {
-    use HasApiTokens, HasUuids, InteractsWithAppAuthentication, InteractsWithAppAuthenticationRecovery, Notifiable, SoftDeletes;
+    use HasApiTokens, HasUuids, InteractsWithAppAuthentication, InteractsWithAppAuthenticationRecovery, Notifiable;
 
     protected $authPasswordName = 'password_hash';
 
@@ -136,6 +135,52 @@ class User extends Authenticatable implements FilamentUser, HasAppAuthentication
     public function consents(): HasMany
     {
         return $this->hasMany(Consent::class);
+    }
+
+    protected static function booted(): void
+    {
+        // Keyed hash of the (encrypted) phone so sign-in can find the account
+        // with an indexed lookup instead of decrypting every row
+        static::saving(function (User $user) {
+            if ($user->isDirty('phone')) {
+                $user->phone_hash = $user->phone ? self::hashPhone($user->phone) : null;
+            }
+        });
+    }
+
+    /** Domain of the stand-in email given to accounts created with a mobile number only. */
+    public const PHONE_ONLY_EMAIL_DOMAIN = '@phone.navesta.in';
+
+    /**
+     * Signed up with mobile + SMS code: no real email and no password they know.
+     */
+    public function isPhoneOnly(): bool
+    {
+        return str_ends_with((string) $this->email, self::PHONE_ONLY_EMAIL_DOMAIN);
+    }
+
+    /**
+     * +91XXXXXXXXXX for Indian mobile numbers written as 10 digits, 91… or +91…
+     */
+    public static function normalizePhone(string $phone): string
+    {
+        $digits = preg_replace('/\D/', '', $phone);
+
+        return match (true) {
+            strlen($digits) === 10 => '+91'.$digits,
+            strlen($digits) === 12 && str_starts_with($digits, '91') => '+'.$digits,
+            default => (str_starts_with(trim($phone), '+') ? '+' : '').$digits,
+        };
+    }
+
+    public static function hashPhone(string $phone): string
+    {
+        return hash_hmac('sha256', self::normalizePhone($phone), (string) config('app.key'));
+    }
+
+    public static function findByPhone(string $phone): ?self
+    {
+        return static::where('phone_hash', self::hashPhone($phone))->first();
     }
 
     public function hasVerifiedPhone(): bool

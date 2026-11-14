@@ -151,17 +151,23 @@ class AuthController extends Controller
 
     public function sendPhoneLoginOtp(Request $request): JsonResponse
     {
-        $data = $request->validate([
-            'phone' => ['required', 'string', 'regex:/^(\+91)?[6-9]\d{9}$/'],
-        ]);
+        $data = $request->validate(['phone' => ['required', 'string', 'max:20']]);
 
-        $rawPhone = preg_replace('/\s+/', '', $data['phone']);
-        $phone = str_starts_with($rawPhone, '+91') ? $rawPhone : '+91'.$rawPhone;
+        // Accept "98765 43210", "919876543210", "+91 98765-43210"...
+        $phone = User::normalizePhone($data['phone']);
+        if (! preg_match('/^\+91[6-9]\d{9}$/', $phone)) {
+            abort(400, 'Enter a valid 10-digit Indian mobile number');
+        }
 
         $challengeId = Str::random(40);
         $code = (string) random_int(100000, 999999);
         $ttl = (int) config('navesta.otp.ttl_minutes', 5);
-        Cache::put("phone-login:{$challengeId}", ['phone' => $phone, 'code' => $code], now()->addMinutes($ttl));
+        // Only a keyed hash of the code is kept, with a guess counter
+        Cache::put("phone-login:{$challengeId}", [
+            'phone' => $phone,
+            'code_hash' => hash_hmac('sha256', $code, (string) config('app.key')),
+            'attempts' => 0,
+        ], now()->addMinutes($ttl));
 
         app(MessageGateway::class)->send(
             'sms',
@@ -183,48 +189,78 @@ class AuthController extends Controller
         return $this->ok($res, 'Verification code sent to your mobile phone');
     }
 
-    public function verifyPhoneLoginOtp(Request $request): JsonResponse
+    /**
+     * Sign in, or sign up, with a mobile number and the code sent to it.
+     * An unknown number only becomes an account when the request carries
+     * the customer's explicit consent (sign-up form); a login attempt for
+     * an unknown number is refused so nobody is enrolled without consent.
+     */
+    public function verifyPhoneLoginOtp(Request $request, ConsentService $consents): JsonResponse
     {
         $data = $request->validate([
             'challengeId' => ['required', 'string', 'size:40'],
             'code' => ['required', 'string', 'digits:6'],
-            'name' => ['nullable', 'string', 'max:120'],
+            'name' => ['nullable', 'string', 'min:2', 'max:120'],
+            'acceptTerms' => ['sometimes', 'boolean'],
+            'acceptMarketing' => ['sometimes', 'boolean'],
         ]);
 
         $key = "phone-login:{$data['challengeId']}";
         $cached = Cache::get($key);
 
+        if (! is_array($cached)) {
+            abort(401, 'This code has expired. Please request a new one.');
+        }
+
+        // Local/testing only: 123456 works for a code that was really requested
         $isTestCode = app()->environment('local', 'testing') && $data['code'] === '123456';
+        $matches = hash_equals($cached['code_hash'], hash_hmac('sha256', $data['code'], (string) config('app.key')));
 
-        if (! $cached && ! $isTestCode) {
-            abort(401, 'Invalid or expired verification code');
+        if (! $matches && ! $isTestCode) {
+            $cached['attempts']++;
+            if ($cached['attempts'] >= (int) config('navesta.otp.max_attempts', 5)) {
+                Cache::forget($key);
+                abort(401, 'Too many incorrect codes. Please request a new one.');
+            }
+            Cache::put($key, $cached, now()->addMinutes((int) config('navesta.otp.ttl_minutes', 5)));
+            abort(401, 'Incorrect code. Please check the SMS and try again.');
         }
 
-        if ($cached && $cached['code'] !== $data['code'] && ! $isTestCode) {
-            abort(401, 'Invalid or expired verification code');
-        }
-
-        $phone = $cached ? $cached['phone'] : '+919876543210';
-        if ($cached) {
-            Cache::forget($key);
-        }
-
-        // Find existing user with matching decrypted phone
-        $user = User::all()->first(fn (User $u) => $u->phone === $phone);
+        Cache::forget($key);
+        $phone = $cached['phone'];
+        $user = User::findByPhone($phone);
 
         if (! $user) {
-            $user = User::create([
-                'name' => $data['name'] ?? 'Fintech Borrower',
-                'email' => 'user_' . substr(md5($phone), 0, 8) . '@borrower.navesta.in',
-                'phone' => $phone,
-                'phone_verified_at' => now(),
-                'is_verified' => true,
-            ]);
-            $this->audit->record('auth.phone.auto_registered', $user, actor: $user);
-        } else {
-            if (! $user->phone_verified_at) {
-                $user->update(['phone_verified_at' => now(), 'is_verified' => true]);
+            if (empty($data['acceptTerms'])) {
+                abort(404, 'No Navesta account uses this number yet. Create a free account to continue.');
             }
+            if (empty($data['name'])) {
+                abort(400, 'Please enter your name');
+            }
+
+            $user = DB::transaction(function () use ($data, $phone, $consents) {
+                $user = new User([
+                    'name' => $data['name'],
+                    // Phone-first accounts get a placeholder address until the customer adds one
+                    'email' => 'user_'.Str::lower(Str::random(12)).User::PHONE_ONLY_EMAIL_DOMAIN,
+                    'phone' => $phone,
+                    // No password: these accounts sign in with OTP only
+                    'password_hash' => Hash::make(Str::random(64)),
+                ]);
+                $user->forceFill(['phone_verified_at' => now(), 'is_verified' => true])->save();
+
+                $consents->record($user, 'terms', true);
+                $consents->record($user, 'privacy', true);
+                $consents->record($user, 'marketing', (bool) ($data['acceptMarketing'] ?? false));
+                $consents->record($user, 'reminders', false);
+
+                return $user;
+            });
+
+            $this->footprint->capture($request, 'registration', $user);
+            $this->audit->record('auth.phone.registered', $user, actor: $user);
+        } elseif (! $user->phone_verified_at) {
+            $user->forceFill(['phone_verified_at' => now(), 'is_verified' => true])->save();
         }
 
         $this->footprint->capture($request, 'phone_otp_login', $user);

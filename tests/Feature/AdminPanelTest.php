@@ -3,12 +3,19 @@
 namespace Tests\Feature;
 
 use App\Enums\BtStatus;
+use App\Enums\InquiryStatus;
 use App\Enums\UserRole;
 use App\Filament\Resources\BtApplications\Pages\ListBtApplications;
 use App\Filament\Resources\BtApplications\Pages\ViewBtApplication;
+use App\Filament\Resources\Inquiries\Pages\ListInquiries;
+use App\Filament\Resources\Inquiries\Pages\ViewInquiry;
 use App\Filament\Resources\Lenders\Pages\EditLender;
 use App\Filament\Resources\Posts\Pages\CreatePost;
+use App\Filament\Widgets\LatestLeads;
+use App\Filament\Widgets\PlatformStats;
+use App\Models\AuditLog;
 use App\Models\BtApplication;
+use App\Models\Inquiry;
 use App\Models\Lender;
 use App\Models\Post;
 use App\Models\User;
@@ -68,7 +75,7 @@ class AdminPanelTest extends TestCase
         $customer = $this->createUser();
         $this->application($customer);
 
-        foreach (['/admin', '/admin/users', "/admin/users/{$customer->id}", '/admin/lenders', '/admin/bt-applications', '/admin/posts', '/admin/posts/create'] as $url) {
+        foreach (['/admin', '/admin/users', "/admin/users/{$customer->id}", '/admin/lenders', '/admin/bt-applications', '/admin/posts', '/admin/posts/create', '/admin/inquiries'] as $url) {
             $this->actingAs($admin)->get($url)->assertOk();
         }
     }
@@ -93,6 +100,35 @@ class AdminPanelTest extends TestCase
             ->callAction('disburse');
 
         $this->assertSame(BtStatus::Disbursed, $application->fresh()->status);
+    }
+
+    public function test_admin_sees_website_leads_and_follows_them_up(): void
+    {
+        $admin = $this->createAdmin();
+        $this->actingAs($admin);
+        Filament::setCurrentPanel('admin');
+
+        // A phone-only callback from the home page and a Contact-page message
+        $this->postJson('/api/v1/inquiries', ['phone' => '+919876543210', 'inquiryType' => 'Personal Loan Callback', 'message' => 'Please call back on +91 9876543210.'])->assertCreated();
+        $this->postJson('/api/v1/inquiries', ['name' => 'Asha Rao', 'email' => 'asha@example.com', 'message' => 'How does a balance transfer work?'])->assertCreated();
+        [$callback, $message] = [Inquiry::firstWhere('inquiry_type', 'Personal Loan Callback'), Inquiry::firstWhere('email', 'asha@example.com')];
+
+        Livewire::test(ListInquiries::class)->assertCanSeeTableRecords([$callback, $message]);
+        Livewire::test(LatestLeads::class)->assertCanSeeTableRecords([$callback, $message]);
+        Livewire::test(PlatformStats::class)->assertSee('New leads')->assertSee('1 loan callback requests');
+        $this->get("/admin/inquiries/{$callback->id}")->assertOk()->assertSee('+919876543210');
+
+        Livewire::test(ViewInquiry::class, ['record' => $callback->id])
+            ->assertActionHidden('reopen')
+            ->callAction('mark_contacted');
+        $this->assertSame(InquiryStatus::Contacted, $callback->fresh()->status);
+
+        Livewire::test(ViewInquiry::class, ['record' => $callback->id])->callAction('resolve');
+        $this->assertSame(InquiryStatus::Resolved, $callback->fresh()->status);
+
+        // Handled leads leave the dashboard list; every move is audited
+        Livewire::test(LatestLeads::class)->assertCanNotSeeTableRecords([$callback])->assertCanSeeTableRecords([$message]);
+        $this->assertSame(2, AuditLog::where('action', 'inquiry.status_changed')->where('actor_id', $admin->id)->count());
     }
 
     public function test_lender_terms_are_edited_in_rupees_and_percent(): void

@@ -31,6 +31,8 @@ class UserController extends Controller
             ...$this->profile($user),
             'isVerified' => $user->is_verified,
             'phoneVerified' => $user->hasVerifiedPhone(),
+            // Phone sign-ups have no password; they confirm sensitive actions by SMS code
+            'hasPassword' => ! $user->isPhoneOnly(),
             'twoFactorEnabled' => $user->two_factor_enabled,
             'remindersEnabled' => $user->reminders_enabled,
             'createdAt' => $user->created_at,
@@ -136,12 +138,43 @@ class UserController extends Controller
      * Close the account and erase the customer's data (DPDP Act right to
      * erasure). Requires the password again.
      */
-    public function destroy(Request $request, AccountDataService $accountData): JsonResponse
+    /**
+     * Texts a confirmation code for account deletion. Customers who signed up
+     * with their mobile number have no password, so this is how they confirm.
+     */
+    public function sendDeletionCode(Request $request, OtpService $otp): JsonResponse
     {
-        $data = $request->validate(['password' => ['required', 'string']]);
+        $user = $request->user();
+        if (! $user->hasVerifiedPhone()) {
+            abort(400, 'Confirm with your password instead: your account has no verified phone number');
+        }
+
+        $expiresIn = $otp->send($user, 'delete_account');
+        $this->audit->record('account.deletion_code_sent', $user);
+
+        return $this->ok([
+            'phoneHint' => OtpService::maskPhone((string) $user->phone),
+            'expiresInSeconds' => $expiresIn,
+        ], 'Confirmation code sent');
+    }
+
+    /**
+     * Permanently erases the account. Confirmed with the password, or with the
+     * SMS code from sendDeletionCode.
+     */
+    public function destroy(Request $request, AccountDataService $accountData, OtpService $otp): JsonResponse
+    {
+        $data = $request->validate([
+            'password' => ['nullable', 'required_without:code', 'string'],
+            'code' => ['nullable', 'required_without:password', 'string', 'digits:'.config('navesta.otp.length')],
+        ]);
         $user = $request->user();
 
-        if (! Hash::check($data['password'], $user->password_hash)) {
+        if (! empty($data['code'])) {
+            if (! $otp->verify($user, 'delete_account', $data['code'])) {
+                abort(400, 'Incorrect or expired code');
+            }
+        } elseif (! Hash::check($data['password'], $user->password_hash)) {
             abort(400, 'Incorrect password');
         }
 

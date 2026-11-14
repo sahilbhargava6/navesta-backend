@@ -2,12 +2,17 @@
 
 namespace Tests\Feature;
 
+use App\Contracts\MessageGateway;
 use App\Models\AuditLog;
 use App\Models\Statement;
 use App\Models\User;
+use App\Models\UserFootprint;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Tests\TestCase;
 
 class PrivacyTest extends TestCase
@@ -92,6 +97,62 @@ class PrivacyTest extends TestCase
         $entry = AuditLog::where('action', 'account.deleted')->first();
         $this->assertSame($user->id, $entry->actor_id);
         $this->assertStringNotContainsString($user->email, json_encode($entry->metadata));
+    }
+
+    public function test_account_deletion_leaves_nothing_behind(): void
+    {
+        $user = $this->createUser();
+        $headers = $this->authHeaders($user);
+        $card = $user->creditCards()->create(['bank_name' => 'HDFC Bank', 'card_name' => 'Millennia', 'credit_limit_paise' => 100000, 'outstanding_paise' => 5000, 'apr_bps' => 4200]);
+        $loan = $user->loans()->create(['lender_name' => 'SBI', 'loan_type' => 'personal', 'principal_paise' => 10000000, 'outstanding_paise' => 8000000, 'interest_rate_bps' => 1400, 'emi_paise' => 341804, 'tenure_months' => 36, 'tenure_remaining_months' => 24]);
+        UserFootprint::create(['user_id' => $user->id, 'event_type' => 'login', 'ip_address' => '203.0.113.7']);
+
+        $this->deleteJson('/api/v1/users/me', ['password' => 'secret123'], $headers)->assertOk();
+
+        // Erased outright, not hidden behind a "deleted" flag
+        foreach (['users' => $user->id, 'credit_cards' => $card->id, 'loans' => $loan->id] as $table => $id) {
+            $this->assertSame(0, DB::table($table)->where('id', $id)->count(), "{$table} row still exists");
+        }
+        $this->assertSame(0, DB::table('user_footprints')->where('user_id', $user->id)->count());
+        $this->assertSame(0, DB::table('consents')->where('user_id', $user->id)->count());
+        $this->assertSame(0, DB::table('personal_access_tokens')->where('tokenable_id', $user->id)->count());
+    }
+
+    public function test_phone_only_accounts_confirm_deletion_with_an_sms_code(): void
+    {
+        $sent = [];
+        $this->app->instance(MessageGateway::class, new class($sent) implements MessageGateway
+        {
+            public function __construct(private array &$sent) {}
+
+            public function send(string $channel, string $to, string $message): string
+            {
+                $this->sent[] = $message;
+
+                return 'fake';
+            }
+        });
+
+        // Signed up with mobile + OTP: stand-in email, random password
+        $user = $this->createUser(['email' => 'user_abc'.User::PHONE_ONLY_EMAIL_DOMAIN, 'password_hash' => Hash::make(Str::random(40))]);
+        $user->forceFill(['phone_verified_at' => now()])->save();
+        $headers = $this->authHeaders($user);
+
+        $this->getJson('/api/v1/users/me', $headers)->assertJsonPath('data.hasPassword', false);
+
+        $this->postJson('/api/v1/users/me/delete-code', [], $headers)->assertOk()->assertJsonStructure(['data' => ['phoneHint']]);
+        preg_match('/(\d{6}) is your Navesta/', end($sent), $m);
+
+        $this->deleteJson('/api/v1/users/me', ['code' => $m[1] === '000000' ? '111111' : '000000'], $headers)->assertStatus(400);
+        $this->assertDatabaseHas('users', ['id' => $user->id]);
+
+        $this->deleteJson('/api/v1/users/me', ['code' => $m[1]], $headers)->assertOk();
+        $this->assertDatabaseMissing('users', ['id' => $user->id]);
+    }
+
+    public function test_deletion_needs_a_password_or_a_code(): void
+    {
+        $this->deleteJson('/api/v1/users/me', [], $this->authHeaders($this->createUser()))->assertStatus(400);
     }
 
     public function test_admins_cannot_delete_their_own_account_through_the_api(): void

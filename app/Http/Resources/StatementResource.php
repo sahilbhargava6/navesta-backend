@@ -19,6 +19,13 @@ class StatementResource extends JsonResource
             'status' => $this->status,
             'downloadable' => $this->isDownloadable(),
             'scannedAt' => $this->scanned_at,
+            // Figures read by the statement parser, if it has been run
+            'parsed' => $this->parsed_at ? [
+                'kind' => $this->parsed_kind,
+                'fields' => (object) ($this->parsed_fields ?? []),
+                'needsReview' => (bool) $this->parse_needs_review,
+                'parsedAt' => $this->parsed_at,
+            ] : null,
             'uploadedAt' => $this->created_at,
         ];
     }

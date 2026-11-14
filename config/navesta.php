@@ -66,6 +66,13 @@ return [
             'port' => (int) env('CLAMAV_PORT', 3310),
             'timeout' => (int) env('CLAMAV_TIMEOUT', 30),
         ],
+        // statement-parser service (../statement_parser): reads the key figures
+        // from card/loan statements. Internal network only. Unset = feature off.
+        'parser' => [
+            'url' => env('STATEMENT_PARSER_URL'),
+            // seconds to wait for one answer; slow scans continue as a job the app polls
+            'timeout' => (int) env('STATEMENT_PARSER_TIMEOUT', 30),
+        ],
     ],
 
     /*
@@ -105,6 +112,7 @@ return [
         'terms' => env('NOTICE_VERSION_TERMS', '2026-10'),
         'privacy' => env('NOTICE_VERSION_PRIVACY', '2026-10'),
         'reminders' => env('NOTICE_VERSION_REMINDERS', '2026-10'),
+        'marketing' => env('NOTICE_VERSION_MARKETING', '2026-10'),
     ],
 
     /*

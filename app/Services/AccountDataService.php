@@ -11,6 +11,7 @@ use App\Models\Consent;
 use App\Models\CreditScore;
 use App\Models\DebtSnapshot;
 use App\Models\User;
+use App\Models\UserFootprint;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -72,9 +73,10 @@ class AccountDataService
     }
 
     /**
-     * Deletes the account and everything linked to it (cards, loans,
-     * applications, scores, snapshots, consents, statement files). The audit
-     * trail keeps a record that the deletion happened, without the email.
+     * Permanently erases the account and everything linked to it (cards,
+     * loans, applications, scores, snapshots, consents, sessions, digital
+     * footprints, statement files). Nothing is kept behind a "deleted" flag.
+     * The audit trail keeps a record that the deletion happened, without the email.
      */
     public function erase(User $user): void
     {
@@ -86,6 +88,10 @@ class AccountDataService
 
         DB::transaction(function () use ($user) {
             $user->tokens()->delete();
+            // No foreign key on footprints, so they would not cascade
+            UserFootprint::where('user_id', $user->id)->delete();
+            // Cards, loans, applications, scores, snapshots, consents and
+            // sessions go with the user row (cascading foreign keys)
             $user->delete();
         });
     }

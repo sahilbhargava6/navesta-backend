@@ -8,7 +8,6 @@ use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Prunable;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Storage;
 
@@ -17,10 +16,15 @@ use Illuminate\Support\Facades\Storage;
  *
  * @property StatementStatus $status
  * @property Carbon|null $scanned_at
+ * @property string|null $parsed_kind
+ * @property array<string, array{value: int|float|string|null, confidence: string|null}>|null $parsed_fields
+ * @property bool|null $parse_needs_review
+ * @property string|null $parser_version
+ * @property Carbon|null $parsed_at
  */
 class Statement extends Model
 {
-    use HasUuids, Prunable, SoftDeletes;
+    use HasUuids, Prunable;
 
     protected $fillable = [
         'original_name',
@@ -32,6 +36,11 @@ class Statement extends Model
         'status',
         'scan_signature',
         'scanned_at',
+        'parsed_kind',
+        'parsed_fields',
+        'parse_needs_review',
+        'parser_version',
+        'parsed_at',
     ];
 
     protected $attributes = [
@@ -44,6 +53,9 @@ class Statement extends Model
             'size_bytes' => 'integer',
             'status' => StatementStatus::class,
             'scanned_at' => 'datetime',
+            'parsed_fields' => 'encrypted:array',
+            'parse_needs_review' => 'boolean',
+            'parsed_at' => 'datetime',
         ];
     }
 

@@ -18,7 +18,7 @@ class OtpService
     public function __construct(private MessageGateway $gateway) {}
 
     /**
-     * @param  'verify_phone'|'login'  $purpose
+     * @param  'verify_phone'|'login'|'delete_account'  $purpose
      * @return int seconds until the code expires
      */
     public function send(User $user, string $purpose): int
