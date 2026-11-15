@@ -113,6 +113,8 @@ return [
         'privacy' => env('NOTICE_VERSION_PRIVACY', '2026-10'),
         'reminders' => env('NOTICE_VERSION_REMINDERS', '2026-10'),
         'marketing' => env('NOTICE_VERSION_MARKETING', '2026-10'),
+        // "Before we continue" sheet on Debt Management: processing financial data for debt guidance
+        'debt_guidance' => env('NOTICE_VERSION_DEBT_GUIDANCE', '2026-11'),
     ],
 
     /*
@@ -129,6 +131,16 @@ return [
     */
     'cache' => [
         'user_results_minutes' => (int) env('USER_CACHE_MINUTES', 10),
+    ],
+
+    /*
+    | Journey tracking: "step reached" events from the website journeys.
+    | The same step from the same person counts once per dedupe window;
+    | events are deleted after the retention period.
+    */
+    'journeys' => [
+        'dedupe_minutes' => (int) env('JOURNEY_DEDUPE_MINUTES', 30),
+        'retention_days' => (int) env('JOURNEY_RETENTION_DAYS', 365),
     ],
 
 ];

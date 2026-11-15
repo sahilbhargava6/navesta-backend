@@ -137,6 +137,19 @@ class User extends Authenticatable implements FilamentUser, HasAppAuthentication
         return $this->hasMany(Consent::class);
     }
 
+    /** @return HasMany<JourneyEvent, $this> */
+    public function journeyEvents(): HasMany
+    {
+        return $this->hasMany(JourneyEvent::class);
+    }
+
+    /** @return HasOne<JourneyEvent, $this> */
+    public function latestJourneyEvent(): HasOne
+    {
+        // Integer ids here, so latestOfMany()'s MAX(id) is safe (unlike UUID tables)
+        return $this->hasOne(JourneyEvent::class)->latestOfMany();
+    }
+
     protected static function booted(): void
     {
         // Keyed hash of the (encrypted) phone so sign-in can find the account

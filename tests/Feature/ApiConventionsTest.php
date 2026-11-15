@@ -9,6 +9,16 @@ class ApiConventionsTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_the_base_address_points_to_the_docs(): void
+    {
+        $this->getJson('/api/v1')
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('data.version', 'v1')
+            ->assertJsonPath('data.docs', url('/docs/api'))
+            ->assertJsonPath('data.health', url('/health'));
+    }
+
     public function test_health_reports_its_checks(): void
     {
         $this->getJson('/health')

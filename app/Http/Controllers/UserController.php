@@ -139,6 +139,25 @@ class UserController extends Controller
      * erasure). Requires the password again.
      */
     /**
+     * Records a consent the customer gives or withdraws on the website (the
+     * Debt Management consent sheet, marketing). Each change is a new row
+     * with the notice version shown, so the history is kept.
+     */
+    public function recordConsent(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'purpose' => ['required', 'string', 'in:'.implode(',', ConsentService::CUSTOMER_PURPOSES)],
+            'granted' => ['required', 'boolean'],
+        ]);
+        $user = $request->user();
+
+        $this->consents->record($user, $data['purpose'], (bool) $data['granted']);
+        $this->audit->record($data['granted'] ? 'consent.granted' : 'consent.withdrawn', $user, ['purpose' => $data['purpose']]);
+
+        return $this->ok(['consents' => $this->consents->current($user)], 'Consent recorded');
+    }
+
+    /**
      * Texts a confirmation code for account deletion. Customers who signed up
      * with their mobile number have no password, so this is how they confirm.
      */

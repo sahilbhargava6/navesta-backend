@@ -5,6 +5,7 @@ use App\Http\Controllers\BalanceTransferController;
 use App\Http\Controllers\CreditCardController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\InquiryController;
+use App\Http\Controllers\JourneyEventController;
 use App\Http\Controllers\LenderController;
 use App\Http\Controllers\LoanController;
 use App\Http\Controllers\NotificationController;
@@ -16,6 +17,17 @@ use App\Http\Controllers\UtilityController;
 use Illuminate\Support\Facades\Route;
 
 // All routes are served under /api/v1 (see bootstrap/app.php).
+
+// The base address itself: where to find the docs, instead of a 404
+Route::get('/', fn () => response()->json([
+    'success' => true,
+    'data' => [
+        'name' => config('app.name').' API',
+        'version' => 'v1',
+        'docs' => url('/docs/api'),
+        'health' => url('/health'),
+    ],
+]));
 
 Route::prefix('auth')->controller(AuthController::class)->group(function () {
     Route::post('register', 'register')->middleware('throttle:register');
@@ -42,6 +54,9 @@ Route::prefix('posts')->controller(PostController::class)->group(function () {
 
 Route::post('inquiries', [InquiryController::class, 'store'])->middleware('throttle:10,1');
 
+// Journey "step reached" events from the website (visitors and customers)
+Route::post('journey-events', [JourneyEventController::class, 'store'])->middleware('throttle:60,1');
+
 // `idempotent`: POSTs honour an Idempotency-Key header (safe retries)
 Route::middleware(['auth:sanctum', 'idempotent'])->group(function () {
     Route::prefix('users')->controller(UserController::class)->group(function () {
@@ -49,6 +64,7 @@ Route::middleware(['auth:sanctum', 'idempotent'])->group(function () {
         Route::patch('me', 'update');
         Route::delete('me', 'destroy')->middleware('throttle:otp-verify');
         Route::post('me/delete-code', 'sendDeletionCode')->middleware('throttle:otp-send');
+        Route::post('me/consents', 'recordConsent')->middleware('throttle:30,1');
         Route::get('me/export', 'export')->middleware('throttle:account-export');
         Route::post('me/phone/send-code', 'sendPhoneCode');
         Route::post('me/phone/verify', 'verifyPhone')->middleware('throttle:otp-verify');

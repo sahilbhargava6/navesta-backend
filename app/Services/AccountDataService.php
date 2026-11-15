@@ -10,6 +10,7 @@ use App\Models\AuditLog;
 use App\Models\Consent;
 use App\Models\CreditScore;
 use App\Models\DebtSnapshot;
+use App\Models\JourneyEvent;
 use App\Models\User;
 use App\Models\UserFootprint;
 use Illuminate\Support\Facades\DB;
@@ -64,6 +65,12 @@ class AccountDataService
                 'noticeVersion' => $c->notice_version,
                 'at' => $c->created_at->toJSON(),
             ])->all(),
+            'journeyProgress' => $user->journeyEvents()->orderBy('created_at')->get()->map(fn (JourneyEvent $e) => [
+                'journey' => $e->journey,
+                'step' => $e->step,
+                'detail' => $e->detail,
+                'at' => $e->created_at->toJSON(),
+            ])->all(),
             'activity' => AuditLog::where('actor_id', $user->id)->latest('created_at')->limit(500)->get()->map(fn (AuditLog $l) => [
                 'action' => $l->action,
                 'at' => $l->created_at->toJSON(),
@@ -90,6 +97,9 @@ class AccountDataService
             $user->tokens()->delete();
             // No foreign key on footprints, so they would not cascade
             UserFootprint::where('user_id', $user->id)->delete();
+            // Journey steps they took before signing in share their browser id; remove those too
+            $visitorIds = $user->journeyEvents()->whereNotNull('visitor_id')->distinct()->pluck('visitor_id');
+            JourneyEvent::whereIn('visitor_id', $visitorIds)->delete();
             // Cards, loans, applications, scores, snapshots, consents and
             // sessions go with the user row (cascading foreign keys)
             $user->delete();

@@ -99,6 +99,25 @@ class PrivacyTest extends TestCase
         $this->assertStringNotContainsString($user->email, json_encode($entry->metadata));
     }
 
+    public function test_debt_guidance_and_marketing_consents_are_recorded_with_history(): void
+    {
+        $user = $this->createUser();
+        $headers = $this->authHeaders($user);
+
+        $this->postJson('/api/v1/users/me/consents', ['purpose' => 'debt_guidance', 'granted' => true], $headers)
+            ->assertOk()
+            ->assertJsonPath('data.consents.debt_guidance.granted', true)
+            ->assertJsonPath('data.consents.debt_guidance.noticeVersion', '2026-11');
+        $this->postJson('/api/v1/users/me/consents', ['purpose' => 'marketing', 'granted' => false], $headers)->assertOk();
+        $this->postJson('/api/v1/users/me/consents', ['purpose' => 'debt_guidance', 'granted' => false], $headers)
+            ->assertJsonPath('data.consents.debt_guidance.granted', false);
+
+        // Every change is kept, and terms/privacy can't be withdrawn this way
+        $this->assertSame(2, $user->consents()->where('purpose', 'debt_guidance')->count());
+        $this->postJson('/api/v1/users/me/consents', ['purpose' => 'terms', 'granted' => false], $headers)->assertStatus(400);
+        $this->assertSame(1, AuditLog::where('action', 'consent.withdrawn')->where('actor_id', $user->id)->where('metadata->purpose', 'debt_guidance')->count());
+    }
+
     public function test_account_deletion_leaves_nothing_behind(): void
     {
         $user = $this->createUser();

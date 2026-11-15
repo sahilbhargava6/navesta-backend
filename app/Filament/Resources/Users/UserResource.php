@@ -9,6 +9,7 @@ use App\Filament\Resources\Users\RelationManagers\BtApplicationsRelationManager;
 use App\Filament\Resources\Users\RelationManagers\ConsentsRelationManager;
 use App\Filament\Resources\Users\RelationManagers\CreditCardsRelationManager;
 use App\Filament\Resources\Users\RelationManagers\CreditScoresRelationManager;
+use App\Filament\Resources\Users\RelationManagers\JourneyEventsRelationManager;
 use App\Filament\Resources\Users\RelationManagers\LoansRelationManager;
 use App\Filament\Resources\Users\RelationManagers\StatementsRelationManager;
 use App\Filament\Resources\Users\Schemas\UserForm;
@@ -78,6 +79,7 @@ class UserResource extends Resource
             CreditScoresRelationManager::class,
             StatementsRelationManager::class,
             ConsentsRelationManager::class,
+            JourneyEventsRelationManager::class,
         ];
     }
 

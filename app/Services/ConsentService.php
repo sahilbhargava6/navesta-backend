@@ -8,7 +8,10 @@ use Illuminate\Support\Str;
 
 class ConsentService
 {
-    public const PURPOSES = ['terms', 'privacy', 'reminders'];
+    public const PURPOSES = ['terms', 'privacy', 'reminders', 'marketing', 'debt_guidance'];
+
+    /** Purposes a customer may grant or withdraw themselves (terms/privacy come with the account). */
+    public const CUSTOMER_PURPOSES = ['marketing', 'debt_guidance'];
 
     /**
      * Record a grant or withdrawal, with the notice version shown and where
